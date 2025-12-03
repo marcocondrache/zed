@@ -7715,6 +7715,7 @@ pub fn open_new(
         workspace.update(cx, |workspace, window, cx| {
             if opened_paths.is_empty() {
                 init(workspace, window, cx);
+            } else {
                 window.activate_window();
             }
         })?;
@@ -8563,7 +8564,10 @@ pub fn with_active_or_new_workspace(
                     OpenOptions::default(),
                     app_state,
                     cx,
-                    move |workspace, window, cx| f(workspace, window, cx),
+                    move |workspace, window, cx| {
+                        window.activate_window();
+                        f(workspace, window, cx)
+                    },
                 )
                 .detach_and_log_err(cx);
             }

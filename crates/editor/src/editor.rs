@@ -2771,6 +2771,7 @@ impl Editor {
                 let editor =
                     cx.new(|cx| Editor::for_buffer(buffer, Some(project.clone()), window, cx));
                 workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
+                window.activate_window();
                 editor
             })
         })

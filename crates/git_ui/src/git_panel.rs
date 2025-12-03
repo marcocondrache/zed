@@ -2259,7 +2259,7 @@ impl GitPanel {
                                 Default::default(),
                                 workspace.app_state().clone(),
                                 cx,
-                                move |workspace, _, cx| {
+                                move |workspace, window, cx| {
                                     cx.activate(true);
                                     workspace
                                         .project()
@@ -2267,6 +2267,8 @@ impl GitPanel {
                                             project.create_worktree(&path, true, cx)
                                         })
                                         .detach();
+
+                                    window.activate_window();
                                 },
                             )
                             .detach();
