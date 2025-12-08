@@ -19,7 +19,7 @@ use core_video::{
 };
 use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{
-    CAMetalLayer, CommandQueue, MTLPixelFormat, MTLResourceOptions, NSRange,
+    CAMetalLayer, CommandQueue, MTLMutability, MTLPixelFormat, MTLResourceOptions, NSRange,
     RenderPassColorAttachmentDescriptorRef,
 };
 use objc::{self, msg_send, sel, sel_impl};
@@ -1212,6 +1212,25 @@ fn build_pipeline_state(
     descriptor.set_label(label);
     descriptor.set_vertex_function(Some(vertex_fn.as_ref()));
     descriptor.set_fragment_function(Some(fragment_fn.as_ref()));
+
+    // Mark all buffers as immutable since CPU writes complete before encoding.
+    // https://developer.apple.com/documentation/metal/synchronizing-cpu-and-gpu-work#Set-the-mutability-of-your-buffers
+    if let Some(buffers) = descriptor.vertex_buffers() {
+        for i in 0..2 {
+            // 0: unit_vertices, 1: instance buffer
+            if let Some(desc) = buffers.object_at(i) {
+                desc.set_mutability(MTLMutability::Immutable);
+            }
+        }
+    }
+
+    if let Some(buffers) = descriptor.fragment_buffers() {
+        // 1: instance buffer
+        if let Some(desc) = buffers.object_at(1) {
+            desc.set_mutability(MTLMutability::Immutable);
+        }
+    }
+
     let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
     color_attachment.set_pixel_format(pixel_format);
     color_attachment.set_blending_enabled(true);
@@ -1246,6 +1265,18 @@ fn build_path_sprite_pipeline_state(
     descriptor.set_label(label);
     descriptor.set_vertex_function(Some(vertex_fn.as_ref()));
     descriptor.set_fragment_function(Some(fragment_fn.as_ref()));
+
+    // Mark all buffers as immutable since CPU writes complete before encoding.
+    // https://developer.apple.com/documentation/metal/synchronizing-cpu-and-gpu-work#Set-the-mutability-of-your-buffers
+    if let Some(buffers) = descriptor.vertex_buffers() {
+        for i in 0..2 {
+            // 0: unit_vertices, 1: sprites
+            if let Some(desc) = buffers.object_at(i) {
+                desc.set_mutability(MTLMutability::Immutable);
+            }
+        }
+    }
+
     let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
     color_attachment.set_pixel_format(pixel_format);
     color_attachment.set_blending_enabled(true);
@@ -1285,6 +1316,23 @@ fn build_path_rasterization_pipeline_state(
         descriptor.set_raster_sample_count(path_sample_count as _);
         descriptor.set_alpha_to_coverage_enabled(false);
     }
+
+    // Mark all buffers as immutable since CPU writes complete before encoding.
+    // https://developer.apple.com/documentation/metal/synchronizing-cpu-and-gpu-work#Set-the-mutability-of-your-buffers
+    if let Some(buffers) = descriptor.vertex_buffers() {
+        // 0: path vertices
+        if let Some(desc) = buffers.object_at(0) {
+            desc.set_mutability(MTLMutability::Immutable);
+        }
+    }
+
+    if let Some(buffers) = descriptor.fragment_buffers() {
+        // 0: path vertices
+        if let Some(desc) = buffers.object_at(0) {
+            desc.set_mutability(MTLMutability::Immutable);
+        }
+    }
+
     let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
     color_attachment.set_pixel_format(pixel_format);
     color_attachment.set_blending_enabled(true);
