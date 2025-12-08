@@ -20,7 +20,7 @@ use core_video::{
 use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{
     CAMetalLayer, CommandQueue, MTLMutability, MTLPixelFormat, MTLResourceOptions, NSRange,
-    RenderPassColorAttachmentDescriptorRef,
+    PipelineBufferDescriptorArrayRef, RenderPassColorAttachmentDescriptorRef,
 };
 use objc::{self, msg_send, sel, sel_impl};
 use parking_lot::Mutex;
@@ -201,6 +201,8 @@ impl MetalRenderer {
             "path_rasterization_fragment",
             MTLPixelFormat::BGRA8Unorm,
             PATH_SAMPLE_COUNT,
+            PathRasterizationInputIndex::immutable_vertex_indexes(),
+            PathRasterizationInputIndex::immutable_fragment_indexes(),
         );
         let path_sprites_pipeline_state = build_path_sprite_pipeline_state(
             &device,
@@ -209,6 +211,8 @@ impl MetalRenderer {
             "path_sprite_vertex",
             "path_sprite_fragment",
             MTLPixelFormat::BGRA8Unorm,
+            SpriteInputIndex::immutable_vertex_indexes(),
+            SpriteInputIndex::immutable_fragment_indexes(),
         );
         let shadows_pipeline_state = build_pipeline_state(
             &device,
@@ -217,6 +221,8 @@ impl MetalRenderer {
             "shadow_vertex",
             "shadow_fragment",
             MTLPixelFormat::BGRA8Unorm,
+            ShadowInputIndex::immutable_vertex_indexes(),
+            ShadowInputIndex::immutable_fragment_indexes(),
         );
         let quads_pipeline_state = build_pipeline_state(
             &device,
@@ -225,6 +231,8 @@ impl MetalRenderer {
             "quad_vertex",
             "quad_fragment",
             MTLPixelFormat::BGRA8Unorm,
+            QuadInputIndex::immutable_vertex_indexes(),
+            QuadInputIndex::immutable_fragment_indexes(),
         );
         let underlines_pipeline_state = build_pipeline_state(
             &device,
@@ -233,6 +241,8 @@ impl MetalRenderer {
             "underline_vertex",
             "underline_fragment",
             MTLPixelFormat::BGRA8Unorm,
+            UnderlineInputIndex::immutable_vertex_indexes(),
+            UnderlineInputIndex::immutable_fragment_indexes(),
         );
         let monochrome_sprites_pipeline_state = build_pipeline_state(
             &device,
@@ -241,6 +251,8 @@ impl MetalRenderer {
             "monochrome_sprite_vertex",
             "monochrome_sprite_fragment",
             MTLPixelFormat::BGRA8Unorm,
+            SpriteInputIndex::immutable_vertex_indexes(),
+            SpriteInputIndex::immutable_fragment_indexes(),
         );
         let polychrome_sprites_pipeline_state = build_pipeline_state(
             &device,
@@ -249,6 +261,8 @@ impl MetalRenderer {
             "polychrome_sprite_vertex",
             "polychrome_sprite_fragment",
             MTLPixelFormat::BGRA8Unorm,
+            SpriteInputIndex::immutable_vertex_indexes(),
+            SpriteInputIndex::immutable_fragment_indexes(),
         );
         let surfaces_pipeline_state = build_pipeline_state(
             &device,
@@ -257,6 +271,8 @@ impl MetalRenderer {
             "surface_vertex",
             "surface_fragment",
             MTLPixelFormat::BGRA8Unorm,
+            SurfaceInputIndex::immutable_vertex_indexes(),
+            SurfaceInputIndex::immutable_fragment_indexes(),
         );
 
         let command_queue = device.new_command_queue();
@@ -1200,6 +1216,8 @@ fn build_pipeline_state(
     vertex_fn_name: &str,
     fragment_fn_name: &str,
     pixel_format: metal::MTLPixelFormat,
+    immutable_vertex_buffers: &[u64],
+    immutable_fragment_buffers: &[u64],
 ) -> metal::RenderPipelineState {
     let vertex_fn = library
         .get_function(vertex_fn_name, None)
@@ -1215,21 +1233,8 @@ fn build_pipeline_state(
 
     // Mark all buffers as immutable since CPU writes complete before encoding.
     // https://developer.apple.com/documentation/metal/synchronizing-cpu-and-gpu-work#Set-the-mutability-of-your-buffers
-    if let Some(buffers) = descriptor.vertex_buffers() {
-        for i in 0..2 {
-            // 0: unit_vertices, 1: instance buffer
-            if let Some(desc) = buffers.object_at(i) {
-                desc.set_mutability(MTLMutability::Immutable);
-            }
-        }
-    }
-
-    if let Some(buffers) = descriptor.fragment_buffers() {
-        // 1: instance buffer
-        if let Some(desc) = buffers.object_at(1) {
-            desc.set_mutability(MTLMutability::Immutable);
-        }
-    }
+    make_buffers_immutable(descriptor.vertex_buffers(), immutable_vertex_buffers);
+    make_buffers_immutable(descriptor.fragment_buffers(), immutable_fragment_buffers);
 
     let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
     color_attachment.set_pixel_format(pixel_format);
@@ -1253,6 +1258,8 @@ fn build_path_sprite_pipeline_state(
     vertex_fn_name: &str,
     fragment_fn_name: &str,
     pixel_format: metal::MTLPixelFormat,
+    immutable_vertex_buffers: &[u64],
+    immutable_fragment_buffers: &[u64],
 ) -> metal::RenderPipelineState {
     let vertex_fn = library
         .get_function(vertex_fn_name, None)
@@ -1268,14 +1275,8 @@ fn build_path_sprite_pipeline_state(
 
     // Mark all buffers as immutable since CPU writes complete before encoding.
     // https://developer.apple.com/documentation/metal/synchronizing-cpu-and-gpu-work#Set-the-mutability-of-your-buffers
-    if let Some(buffers) = descriptor.vertex_buffers() {
-        for i in 0..2 {
-            // 0: unit_vertices, 1: sprites
-            if let Some(desc) = buffers.object_at(i) {
-                desc.set_mutability(MTLMutability::Immutable);
-            }
-        }
-    }
+    make_buffers_immutable(descriptor.vertex_buffers(), immutable_vertex_buffers);
+    make_buffers_immutable(descriptor.fragment_buffers(), immutable_fragment_buffers);
 
     let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
     color_attachment.set_pixel_format(pixel_format);
@@ -1300,6 +1301,8 @@ fn build_path_rasterization_pipeline_state(
     fragment_fn_name: &str,
     pixel_format: metal::MTLPixelFormat,
     path_sample_count: u32,
+    immutable_vertex_buffers: &[u64],
+    immutable_fragment_buffers: &[u64],
 ) -> metal::RenderPipelineState {
     let vertex_fn = library
         .get_function(vertex_fn_name, None)
@@ -1319,19 +1322,8 @@ fn build_path_rasterization_pipeline_state(
 
     // Mark all buffers as immutable since CPU writes complete before encoding.
     // https://developer.apple.com/documentation/metal/synchronizing-cpu-and-gpu-work#Set-the-mutability-of-your-buffers
-    if let Some(buffers) = descriptor.vertex_buffers() {
-        // 0: path vertices
-        if let Some(desc) = buffers.object_at(0) {
-            desc.set_mutability(MTLMutability::Immutable);
-        }
-    }
-
-    if let Some(buffers) = descriptor.fragment_buffers() {
-        // 0: path vertices
-        if let Some(desc) = buffers.object_at(0) {
-            desc.set_mutability(MTLMutability::Immutable);
-        }
-    }
+    make_buffers_immutable(descriptor.vertex_buffers(), immutable_vertex_buffers);
+    make_buffers_immutable(descriptor.fragment_buffers(), immutable_fragment_buffers);
 
     let color_attachment = descriptor.color_attachments().object_at(0).unwrap();
     color_attachment.set_pixel_format(pixel_format);
@@ -1353,11 +1345,34 @@ fn align_offset(offset: &mut usize) {
     *offset = (*offset).div_ceil(256) * 256;
 }
 
+fn make_buffers_immutable(buffers: Option<&PipelineBufferDescriptorArrayRef>, indexes: &[u64]) {
+    if let Some(buffers) = buffers {
+        for &index in indexes {
+            if let Some(desc) = buffers.object_at(index) {
+                desc.set_mutability(MTLMutability::Immutable);
+            }
+        }
+    }
+}
+
 #[repr(C)]
 enum ShadowInputIndex {
     Vertices = 0,
     Shadows = 1,
     ViewportSize = 2,
+}
+
+impl ImmutableBufferIndex for ShadowInputIndex {
+    fn immutable_vertex_indexes() -> &'static [u64] {
+        &[
+            ShadowInputIndex::Vertices as u64,
+            ShadowInputIndex::Shadows as u64,
+        ]
+    }
+
+    fn immutable_fragment_indexes() -> &'static [u64] {
+        &[ShadowInputIndex::Shadows as u64]
+    }
 }
 
 #[repr(C)]
@@ -1367,11 +1382,37 @@ enum QuadInputIndex {
     ViewportSize = 2,
 }
 
+impl ImmutableBufferIndex for QuadInputIndex {
+    fn immutable_vertex_indexes() -> &'static [u64] {
+        &[
+            QuadInputIndex::Vertices as u64,
+            QuadInputIndex::Quads as u64,
+        ]
+    }
+
+    fn immutable_fragment_indexes() -> &'static [u64] {
+        &[QuadInputIndex::Quads as u64]
+    }
+}
+
 #[repr(C)]
 enum UnderlineInputIndex {
     Vertices = 0,
     Underlines = 1,
     ViewportSize = 2,
+}
+
+impl ImmutableBufferIndex for UnderlineInputIndex {
+    fn immutable_vertex_indexes() -> &'static [u64] {
+        &[
+            UnderlineInputIndex::Vertices as u64,
+            UnderlineInputIndex::Underlines as u64,
+        ]
+    }
+
+    fn immutable_fragment_indexes() -> &'static [u64] {
+        &[UnderlineInputIndex::Underlines as u64]
+    }
 }
 
 #[repr(C)]
@@ -1381,6 +1422,19 @@ enum SpriteInputIndex {
     ViewportSize = 2,
     AtlasTextureSize = 3,
     AtlasTexture = 4,
+}
+
+impl ImmutableBufferIndex for SpriteInputIndex {
+    fn immutable_vertex_indexes() -> &'static [u64] {
+        &[
+            SpriteInputIndex::Vertices as u64,
+            SpriteInputIndex::Sprites as u64,
+        ]
+    }
+
+    fn immutable_fragment_indexes() -> &'static [u64] {
+        &[SpriteInputIndex::Sprites as u64]
+    }
 }
 
 #[repr(C)]
@@ -1393,10 +1447,37 @@ enum SurfaceInputIndex {
     CbCrTexture = 5,
 }
 
+impl ImmutableBufferIndex for SurfaceInputIndex {
+    fn immutable_vertex_indexes() -> &'static [u64] {
+        &[
+            SurfaceInputIndex::Vertices as u64,
+            SurfaceInputIndex::Surfaces as u64,
+        ]
+    }
+}
+
 #[repr(C)]
 enum PathRasterizationInputIndex {
     Vertices = 0,
     ViewportSize = 1,
+}
+
+impl ImmutableBufferIndex for PathRasterizationInputIndex {
+    fn immutable_vertex_indexes() -> &'static [u64] {
+        &[PathRasterizationInputIndex::Vertices as u64]
+    }
+
+    fn immutable_fragment_indexes() -> &'static [u64] {
+        &[PathRasterizationInputIndex::Vertices as u64]
+    }
+}
+
+trait ImmutableBufferIndex {
+    fn immutable_vertex_indexes() -> &'static [u64];
+
+    fn immutable_fragment_indexes() -> &'static [u64] {
+        &[]
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
