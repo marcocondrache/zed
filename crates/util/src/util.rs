@@ -51,10 +51,12 @@ macro_rules! debug_panic {
     };
 }
 
+pub const UTF8_CHAR_BOUNDARY: i8 = -0x40; // -64
+
 #[inline]
 pub const fn is_utf8_char_boundary(u8: u8) -> bool {
     // This is bit magic equivalent to: b < 128 || b >= 192
-    (u8 as i8) >= -0x40
+    (u8 as i8) >= UTF8_CHAR_BOUNDARY
 }
 
 pub fn truncate(s: &str, max_chars: usize) -> &str {

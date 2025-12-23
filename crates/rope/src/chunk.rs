@@ -3,7 +3,8 @@ use arrayvec::ArrayString;
 use std::{cmp, ops::Range};
 use sum_tree::Bias;
 use unicode_segmentation::GraphemeCursor;
-use util::debug_panic;
+use util::{UTF8_CHAR_BOUNDARY, debug_panic};
+use wide::{CmpGt, CmpLt, i8x16, u8x16};
 
 #[cfg(not(all(test, not(rust_analyzer))))]
 pub(crate) type Bitmap = u128;
@@ -12,6 +13,10 @@ pub(crate) type Bitmap = u16;
 
 pub(crate) const MIN_BASE: usize = MAX_BASE / 2;
 pub(crate) const MAX_BASE: usize = Bitmap::BITS as usize;
+
+/// First byte value of 4-byte UTF-8 sequences (U+010000 and above).
+/// These code points require two UTF-16 code units (surrogate pairs).
+const UTF8_4BYTE_MIN: u8 = 0xF0;
 
 #[derive(Clone, Debug, Default)]
 pub struct Chunk {
@@ -43,57 +48,63 @@ const fn saturating_shr_mask(offset: u32) -> Bitmap {
 }
 
 impl Chunk {
-    pub const MASK_BITS: usize = Bitmap::BITS as usize;
-
     #[inline(always)]
     pub fn new(text: &str) -> Self {
         let text = ArrayString::from(text).unwrap();
+        let bytes = text.as_bytes();
 
-        const CHUNK_SIZE: usize = 8;
+        const CHUNK_SIZE: usize = u8x16::LANES as usize;
 
-        let mut chars_bytes = [0; MAX_BASE / CHUNK_SIZE];
-        let mut newlines_bytes = [0; MAX_BASE / CHUNK_SIZE];
-        let mut tabs_bytes = [0; MAX_BASE / CHUNK_SIZE];
-        let mut chars_utf16_bytes = [0; MAX_BASE / CHUNK_SIZE];
+        let tab = u8x16::splat(b'\t');
+        let newline = u8x16::splat(b'\n');
+        let char_boundary = i8x16::splat(UTF8_CHAR_BOUNDARY - 1);
+        let utf16_surrogate = i8x16::splat((UTF8_4BYTE_MIN as i8) - 1);
 
-        let mut chunk_ix = 0;
+        let mut chars: Bitmap = 0;
+        let mut newlines: Bitmap = 0;
+        let mut tabs: Bitmap = 0;
+        let mut chars_utf16_extra: Bitmap = 0;
 
-        let mut bytes = text.as_bytes();
-        while !bytes.is_empty() {
-            let (chunk, rest) = bytes.split_at(bytes.len().min(CHUNK_SIZE));
-            bytes = rest;
+        let (chunks, remainder) = bytes.as_chunks::<CHUNK_SIZE>();
 
-            let mut chars = 0;
-            let mut newlines = 0;
-            let mut tabs = 0;
-            let mut chars_utf16 = 0;
+        // Pad remainder into a full-sized chunk
+        let mut padded_remainder = [0u8; CHUNK_SIZE];
+        padded_remainder[..remainder.len()].copy_from_slice(remainder);
 
-            for (ix, &b) in chunk.iter().enumerate() {
-                chars |= (util::is_utf8_char_boundary(b) as u8) << ix;
-                newlines |= ((b == b'\n') as u8) << ix;
-                tabs |= ((b == b'\t') as u8) << ix;
-                // b >= 240 when we are at the first byte of the 4 byte encoded
-                // utf-8 code point (U+010000 or greater) it means that it would
-                // be encoded as two 16-bit code units in utf-16
-                chars_utf16 |= ((b >= 240) as u8) << ix;
-            }
+        let chunks_iter = chunks.iter().map(|chunk| (chunk, CHUNK_SIZE));
+        let remainder_iter =
+            (!remainder.is_empty()).then_some((&padded_remainder, remainder.len()));
 
-            chars_bytes[chunk_ix] = chars;
-            newlines_bytes[chunk_ix] = newlines;
-            tabs_bytes[chunk_ix] = tabs;
-            chars_utf16_bytes[chunk_ix] = chars_utf16;
+        for (ix, (chunk, len)) in chunks_iter.chain(remainder_iter).enumerate() {
+            let vec = u8x16::new(*chunk);
+            let vec_signed = i8x16::new(unsafe { std::mem::transmute(vec.to_array()) });
+            let offset = ix * CHUNK_SIZE;
+            let len_mask = (1u32 << len) - 1;
 
-            chunk_ix += 1;
+            let newline_mask = (vec.simd_eq(newline).to_bitmask()) & len_mask;
+            let tab_mask = (vec.simd_eq(tab).to_bitmask()) & len_mask;
+            let char_mask = (vec_signed.simd_gt(char_boundary).to_bitmask()) & len_mask;
+            // For 4-byte UTF-8 sequences: byte >= 240 means (byte as i8) in [-16, -1]
+            // simd_gt(-17) catches > -17, but also catches 0-127 (positive values)
+            // So we also need to check that the byte is negative (< 0)
+            let is_negative = vec_signed.simd_lt(i8x16::ZERO).to_bitmask();
+            let utf16_mask =
+                (vec_signed.simd_gt(utf16_surrogate).to_bitmask()) & is_negative & len_mask;
+
+            chars |= (char_mask as Bitmap) << offset;
+            newlines |= (newline_mask as Bitmap) << offset;
+            tabs |= (tab_mask as Bitmap) << offset;
+            chars_utf16_extra |= (utf16_mask as Bitmap) << offset;
         }
 
-        let chars = Bitmap::from_le_bytes(chars_bytes);
+        let chars_utf16 = (chars_utf16_extra << 1) | chars;
 
         Chunk {
             text,
             chars,
-            chars_utf16: (Bitmap::from_le_bytes(chars_utf16_bytes) << 1) | chars,
-            newlines: Bitmap::from_le_bytes(newlines_bytes),
-            tabs: Bitmap::from_le_bytes(tabs_bytes),
+            chars_utf16,
+            newlines,
+            tabs,
         }
     }
 
