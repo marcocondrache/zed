@@ -5,7 +5,7 @@ use criterion::{
 };
 use rand::prelude::*;
 use rand::rngs::StdRng;
-use rope::{Point, Rope};
+use rope::{Chunk, Point, Rope};
 use sum_tree::Bias;
 use util::RandomCharIter;
 
@@ -266,6 +266,18 @@ fn rope_benchmarks(c: &mut Criterion) {
         });
     });
 
+    group.finish();
+
+    let mut group = c.benchmark_group("chunk_new");
+    let chunk_size = 128;
+    group.throughput(Throughput::Bytes(chunk_size as u64));
+    group.bench_function("128_bytes", |b| {
+        let mut rng = StdRng::seed_from_u64(SEED);
+        let text = generate_random_text(&mut rng, chunk_size);
+        b.iter(|| {
+            black_box(Chunk::new(&text));
+        });
+    });
     group.finish();
 }
 
