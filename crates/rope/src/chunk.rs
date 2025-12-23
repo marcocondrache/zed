@@ -79,6 +79,10 @@ impl Chunk {
             let vec = u8x16::new(*chunk);
             let vec_signed = i8x16::new(unsafe { std::mem::transmute(vec.to_array()) });
             let offset = ix * CHUNK_SIZE;
+
+            // Ensure we don't shift beyond bitmap capacity
+            debug_assert!(offset + len <= Bitmap::BITS as usize);
+
             let len_mask = (1u32 << len) - 1;
 
             let newline_mask = (vec.simd_eq(newline).to_bitmask()) & len_mask;
