@@ -1736,20 +1736,19 @@ impl SearchableItem for Editor {
         let search_within_ranges = self
             .background_highlights
             .get(&HighlightKey::Type(TypeId::of::<SearchWithinRange>()))
-            .map_or(vec![], |(_color, ranges)| {
-                ranges.iter().cloned().collect::<Vec<_>>()
-            });
+            .map(|(_color, ranges)| Arc::clone(ranges));
 
         cx.background_spawn(async move {
             let mut ranges = Vec::new();
 
-            let search_within_ranges = if search_within_ranges.is_empty() {
-                vec![buffer.anchor_before(MultiBufferOffset(0))..buffer.anchor_after(buffer.len())]
-            } else {
-                search_within_ranges
+            let search_within_ranges: &[Range<Anchor>] = match &search_within_ranges {
+                Some(ranges) if !ranges.is_empty() => ranges,
+                _ => &[
+                    buffer.anchor_before(MultiBufferOffset(0))..buffer.anchor_after(buffer.len())
+                ],
             };
 
-            for range in search_within_ranges {
+            for range in search_within_ranges.iter().cloned() {
                 for (search_buffer, search_range, excerpt_id, deleted_hunk_anchor) in
                     buffer.range_to_buffer_ranges_with_deleted_hunks(range)
                 {
