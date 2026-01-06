@@ -21525,12 +21525,7 @@ impl Editor {
         color_fetcher: impl Fn(&usize, &Theme) -> Hsla + Send + Sync + 'static,
         cx: &mut Context<Self>,
     ) {
-        self.background_highlights.insert(
-            HighlightKey::Type(TypeId::of::<T>()),
-            (Arc::new(color_fetcher), Arc::from(ranges)),
-        );
-        self.scrollbar_marker_state.dirty = true;
-        cx.notify();
+        self.highlight_background_internal::<T>(None, Arc::from(ranges), color_fetcher, cx);
     }
 
     pub fn highlight_background_key<T: 'static>(
@@ -21540,10 +21535,22 @@ impl Editor {
         color_fetcher: impl Fn(&usize, &Theme) -> Hsla + Send + Sync + 'static,
         cx: &mut Context<Self>,
     ) {
-        self.background_highlights.insert(
-            HighlightKey::TypePlus(TypeId::of::<T>(), key),
-            (Arc::new(color_fetcher), Arc::from(ranges)),
-        );
+        self.highlight_background_internal::<T>(Some(key), Arc::from(ranges), color_fetcher, cx);
+    }
+
+    fn highlight_background_internal<T: 'static>(
+        &mut self,
+        key: Option<usize>,
+        ranges: Arc<[Range<Anchor>]>,
+        color_fetcher: impl Fn(&usize, &Theme) -> Hsla + Send + Sync + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        let key = key
+            .map(|key| HighlightKey::TypePlus(TypeId::of::<T>(), key))
+            .unwrap_or(HighlightKey::Type(TypeId::of::<T>()));
+
+        self.background_highlights
+            .insert(key, (Arc::new(color_fetcher), ranges));
         self.scrollbar_marker_state.dirty = true;
         cx.notify();
     }

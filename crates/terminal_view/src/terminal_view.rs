@@ -1461,7 +1461,7 @@ impl SearchableItem for TerminalView {
     /// Store matches returned from find_matches somewhere for rendering
     fn update_matches(
         &mut self,
-        matches: &[Self::Match],
+        matches: Arc<[Self::Match]>,
         _active_match_index: Option<usize>,
         _window: &mut Window,
         cx: &mut Context<Self>,

@@ -1,4 +1,4 @@
-pub mod any_vec;
+pub mod any_slice;
 pub mod arc_cow;
 pub mod archive;
 pub mod command;

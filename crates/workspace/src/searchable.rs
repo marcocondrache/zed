@@ -5,7 +5,7 @@ use gpui::{
     Window,
 };
 use project::search::SearchQuery;
-use util::any_vec::AnyVec;
+use util::any_slice::AnySlice;
 
 use crate::{
     ItemHandle,
@@ -102,7 +102,7 @@ pub trait SearchableItem: Item + EventEmitter<SearchEvent> {
     fn clear_matches(&mut self, window: &mut Window, cx: &mut Context<Self>);
     fn update_matches(
         &mut self,
-        matches: &[Self::Match],
+        matches: Arc<[Self::Match]>,
         active_match_index: Option<usize>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -189,25 +189,31 @@ pub trait SearchableItemHandle: ItemHandle {
     fn clear_matches(&self, window: &mut Window, cx: &mut App);
     fn update_matches(
         &self,
-        matches: &AnyVec,
+        matches: &AnySlice,
         active_match_index: Option<usize>,
         window: &mut Window,
         cx: &mut App,
     );
     fn query_suggestion(&self, window: &mut Window, cx: &mut App) -> String;
-    fn activate_match(&self, index: usize, matches: &AnyVec, window: &mut Window, cx: &mut App);
-    fn select_matches(&self, matches: &AnyVec, window: &mut Window, cx: &mut App);
+    fn activate_match(&self, index: usize, matches: &AnySlice, window: &mut Window, cx: &mut App);
+    fn select_matches(&self, matches: &AnySlice, window: &mut Window, cx: &mut App);
     fn replace(
         &self,
-        _: util::any_vec::AnyElementRef<'_>,
+        _: util::any_slice::AnySliceElementRef<'_>,
         _: &SearchQuery,
         _window: &mut Window,
         _: &mut App,
     );
-    fn replace_all(&self, matches: &AnyVec, query: &SearchQuery, window: &mut Window, cx: &mut App);
+    fn replace_all(
+        &self,
+        matches: &AnySlice,
+        query: &SearchQuery,
+        window: &mut Window,
+        cx: &mut App,
+    );
     fn match_index_for_direction(
         &self,
-        matches: &AnyVec,
+        matches: &AnySlice,
         current_index: usize,
         direction: Direction,
         count: usize,
@@ -219,11 +225,11 @@ pub trait SearchableItemHandle: ItemHandle {
         query: Arc<SearchQuery>,
         window: &mut Window,
         cx: &mut App,
-    ) -> Task<AnyVec>;
+    ) -> Task<AnySlice>;
     fn active_match_index(
         &self,
         direction: Direction,
-        matches: &AnyVec,
+        matches: &AnySlice,
         window: &mut Window,
         cx: &mut App,
     ) -> Option<usize>;
@@ -268,48 +274,43 @@ impl<T: SearchableItem> SearchableItemHandle for Entity<T> {
     }
     fn update_matches(
         &self,
-        matches: &AnyVec,
+        matches: &AnySlice,
         active_match_index: Option<usize>,
         window: &mut Window,
         cx: &mut App,
     ) {
+        let matches = matches.downcast_arc().unwrap();
         self.update(cx, |this, cx| {
-            this.update_matches(matches.as_slice().unwrap(), active_match_index, window, cx)
+            this.update_matches(matches, active_match_index, window, cx)
         });
     }
     fn query_suggestion(&self, window: &mut Window, cx: &mut App) -> String {
         self.update(cx, |this, cx| this.query_suggestion(window, cx))
     }
-    fn activate_match(&self, index: usize, matches: &AnyVec, window: &mut Window, cx: &mut App) {
+    fn activate_match(&self, index: usize, matches: &AnySlice, window: &mut Window, cx: &mut App) {
+        let matches = matches.downcast_ref().unwrap();
         self.update(cx, |this, cx| {
-            this.activate_match(index, matches.as_slice().unwrap(), window, cx)
+            this.activate_match(index, matches, window, cx)
         });
     }
 
-    fn select_matches(&self, matches: &AnyVec, window: &mut Window, cx: &mut App) {
-        self.update(cx, |this, cx| {
-            this.select_matches(matches.as_slice().unwrap(), window, cx)
-        });
+    fn select_matches(&self, matches: &AnySlice, window: &mut Window, cx: &mut App) {
+        let matches = matches.downcast_ref().unwrap();
+        self.update(cx, |this, cx| this.select_matches(matches, window, cx));
     }
 
     fn match_index_for_direction(
         &self,
-        matches: &AnyVec,
+        matches: &AnySlice,
         current_index: usize,
         direction: Direction,
         count: usize,
         window: &mut Window,
         cx: &mut App,
     ) -> usize {
+        let matches = matches.downcast_ref().unwrap();
         self.update(cx, |this, cx| {
-            this.match_index_for_direction(
-                matches.as_slice().unwrap(),
-                current_index,
-                direction,
-                count,
-                window,
-                cx,
-            )
+            this.match_index_for_direction(matches, current_index, direction, count, window, cx)
         })
     }
     fn find_matches(
@@ -317,25 +318,26 @@ impl<T: SearchableItem> SearchableItemHandle for Entity<T> {
         query: Arc<SearchQuery>,
         window: &mut Window,
         cx: &mut App,
-    ) -> Task<AnyVec> {
+    ) -> Task<AnySlice> {
         let matches = self.update(cx, |this, cx| this.find_matches(query, window, cx));
-        window.spawn(cx, async |_| AnyVec::from(matches.await))
+        window.spawn(cx, async |_| AnySlice::from(matches.await))
     }
     fn active_match_index(
         &self,
         direction: Direction,
-        matches: &AnyVec,
+        matches: &AnySlice,
         window: &mut Window,
         cx: &mut App,
     ) -> Option<usize> {
+        let matches = matches.downcast_ref()?;
         self.update(cx, |this, cx| {
-            this.active_match_index(direction, matches.as_slice()?, window, cx)
+            this.active_match_index(direction, matches, window, cx)
         })
     }
 
     fn replace(
         &self,
-        mat: util::any_vec::AnyElementRef<'_>,
+        mat: util::any_slice::AnySliceElementRef<'_>,
         query: &SearchQuery,
         window: &mut Window,
         cx: &mut App,
@@ -346,13 +348,14 @@ impl<T: SearchableItem> SearchableItemHandle for Entity<T> {
 
     fn replace_all(
         &self,
-        matches: &AnyVec,
+        matches: &AnySlice,
         query: &SearchQuery,
         window: &mut Window,
         cx: &mut App,
     ) {
+        let matches = matches.downcast_ref().unwrap();
         self.update(cx, |this, cx| {
-            this.replace_all(&mut matches.iter().unwrap(), query, window, cx);
+            this.replace_all(&mut matches.iter(), query, window, cx);
         })
     }
 

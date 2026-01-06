@@ -1473,7 +1473,7 @@ impl SearchableItem for Editor {
 
     fn update_matches(
         &mut self,
-        matches: &[Range<Anchor>],
+        matches: Arc<[Range<Anchor>]>,
         active_match_index: Option<usize>,
         _: &mut Window,
         cx: &mut Context<Self>,
@@ -1482,8 +1482,9 @@ impl SearchableItem for Editor {
             .background_highlights
             .get(&HighlightKey::Type(TypeId::of::<BufferSearchHighlights>()))
             .map(|(_, range)| range.as_ref());
-        let updated = existing_range != Some(matches);
-        self.highlight_background::<BufferSearchHighlights>(
+        let updated = existing_range != Some(matches.as_ref());
+        self.highlight_background_internal::<BufferSearchHighlights>(
+            None,
             matches,
             move |index, theme| {
                 if active_match_index == Some(*index) {

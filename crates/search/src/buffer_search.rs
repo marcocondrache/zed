@@ -33,7 +33,7 @@ use std::{any::TypeId, sync::Arc};
 use zed_actions::{outline::ToggleOutline, workspace::CopyPath, workspace::CopyRelativePath};
 
 use ui::{BASE_REM_SIZE_IN_PX, IconButtonShape, Tooltip, prelude::*, utils::SearchInputWidth};
-use util::{ResultExt, any_vec::AnyVec, paths::PathMatcher};
+use util::{ResultExt, any_slice::AnySlice, paths::PathMatcher};
 use workspace::{
     ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView, Workspace,
     item::{ItemBufferKind, ItemHandle},
@@ -114,7 +114,7 @@ pub struct BufferSearchBar {
     #[cfg(target_os = "macos")]
     pending_external_query: Option<(String, SearchOptions)>,
     active_search: Option<Arc<SearchQuery>>,
-    searchable_items_with_matches: HashMap<Box<dyn WeakSearchableItemHandle>, AnyVec>,
+    searchable_items_with_matches: HashMap<Box<dyn WeakSearchableItemHandle>, AnySlice>,
     pending_search: Option<Task<()>>,
     search_options: SearchOptions,
     default_options: SearchOptions,
@@ -230,7 +230,7 @@ impl Render for BufferSearchBar {
                 let matches_count = self
                     .searchable_items_with_matches
                     .get(&searchable_item.downgrade())
-                    .map(AnyVec::len)
+                    .map(AnySlice::len)
                     .unwrap_or(0);
                 if let Some(match_ix) = self.active_match_index {
                     Some(format!("{}/{}", match_ix + 1, matches_count))

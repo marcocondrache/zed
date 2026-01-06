@@ -812,7 +812,7 @@ impl SearchableItem for LspLogView {
 
     fn update_matches(
         &mut self,
-        matches: &[Self::Match],
+        matches: Arc<[Self::Match]>,
         active_match_index: Option<usize>,
         window: &mut Window,
         cx: &mut Context<Self>,
