@@ -10,7 +10,6 @@ use crate::{
         render_action_button, render_text_input,
     },
 };
-use any_vec::AnyVec;
 use collections::HashMap;
 use editor::{
     DisplayPoint, Editor, EditorSettings, MultiBufferOffset,
@@ -115,7 +114,7 @@ pub struct BufferSearchBar {
     #[cfg(target_os = "macos")]
     pending_external_query: Option<(String, SearchOptions)>,
     active_search: Option<Arc<SearchQuery>>,
-    searchable_items_with_matches: HashMap<Box<dyn WeakSearchableItemHandle>, AnyVec<dyn Send>>,
+    searchable_items_with_matches: HashMap<Box<dyn WeakSearchableItemHandle>, AnyVec>,
     pending_search: Option<Task<()>>,
     search_options: SearchOptions,
     default_options: SearchOptions,
@@ -1725,7 +1724,7 @@ impl BufferSearchBar {
                 .as_ref()
                 .clone()
                 .with_replacement(self.replacement(cx));
-            searchable_item.replace_all(&mut matches.iter(), &query, window, cx);
+            searchable_item.replace_all(matches, &query, window, cx);
         }
     }
 

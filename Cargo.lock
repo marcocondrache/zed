@@ -684,12 +684,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "any_vec"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34cd60c5e3152cef0a592f1b296f1cc93715d89d2551d85315828c3a09575ff4"
-
-[[package]]
 name = "anyhow"
 version = "1.0.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14552,7 +14546,6 @@ checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
 name = "search"
 version = "0.1.0"
 dependencies = [
- "any_vec",
  "anyhow",
  "bitflags 2.9.4",
  "client",
@@ -20223,7 +20216,6 @@ dependencies = [
 name = "workspace"
 version = "0.1.0"
 dependencies = [
- "any_vec",
  "anyhow",
  "async-recursion",
  "call",
