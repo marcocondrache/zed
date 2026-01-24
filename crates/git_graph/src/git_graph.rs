@@ -862,8 +862,10 @@ impl GitGraph {
         self._commit_diff_task = Some(cx.spawn(async move |this, cx| {
             if let Ok(Ok(diff)) = diff_receiver.await {
                 this.update(cx, |this, cx| {
-                    this.selected_commit_diff = Some(diff);
-                    cx.notify();
+                    if this.selected_entry_idx == Some(idx) {
+                        this.selected_commit_diff = Some(diff);
+                        cx.notify();
+                    }
                 })
                 .ok();
             }
