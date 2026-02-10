@@ -81,10 +81,10 @@ message Envelope {
         RenameProjectEntry rename_project_entry = 47;
         CopyProjectEntry copy_project_entry = 48;
         DeleteProjectEntry delete_project_entry = 49;
-        DeleteProjectEntryResponse delete_project_entry_response = 414;
-        RestoreProjectEntry restore_project_entry = 413;
-        TrashProjectEntry trash_project_entry = 415;
-        TrashProjectEntryResponse trash_project_entry_response = 416;
+        DeleteProjectEntryResponse delete_project_entry_response = 423;
+        RestoreProjectEntry restore_project_entry = 424;
+        TrashProjectEntry trash_project_entry = 425;
+        TrashProjectEntryResponse trash_project_entry_response = 426;
         ProjectEntryResponse project_entry_response = 50;
         ExpandProjectEntry expand_project_entry = 51;
         ExpandProjectEntryResponse expand_project_entry_response = 52;
@@ -460,13 +460,8 @@ message Envelope {
         FindSearchCandidatesChunk find_search_candidates_chunk = 409;
         FindSearchCandidatesCancelled find_search_candidates_cancelled = 410;
         GetContextServerCommand get_context_server_command = 411;
-<<<<<<< HEAD
         ContextServerCommand context_server_command = 412;
-||||||| 9d7b6596dc
-        ContextServerCommand context_server_command = 412; // current max
-=======
-        ContextServerCommand context_server_command = 412;
-        
+
         AllocateWorktreeId allocate_worktree_id = 413;
         AllocateWorktreeIdResponse allocate_worktree_id_response = 414;
 
@@ -479,7 +474,6 @@ message Envelope {
         RefreshSemanticTokens refresh_semantic_tokens = 420;
         GetFoldingRanges get_folding_ranges = 421;
         GetFoldingRangesResponse get_folding_ranges_response = 422; // current max
->>>>>>> main
     }
     // current max field: 416
 
