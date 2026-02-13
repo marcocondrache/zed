@@ -1266,10 +1266,14 @@ extern "C" fn on_thermal_state_change(this: &mut Object, _: Sel, _: id) {
     let platform = unsafe { get_mac_platform(this) };
     let platform_ptr = platform as *const MacPlatform as *mut c_void;
     unsafe {
-        dispatch_async_f(dispatch_get_main_queue(), platform_ptr, Some(trampoline));
+        dispatch_async_f(
+            dispatch_get_main_queue(),
+            platform_ptr,
+            Some(on_thermal_state_change),
+        );
     }
 
-    unsafe extern "C" fn trampoline(context: *mut c_void) {
+    unsafe extern "C" fn on_thermal_state_change(context: *mut c_void) {
         let platform = unsafe { &*(context as *const MacPlatform) };
         let mut lock = platform.0.lock();
         if let Some(mut callback) = lock.on_thermal_state_change.take() {
