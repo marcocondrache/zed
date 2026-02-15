@@ -7,7 +7,8 @@ use std::time::Duration;
 use std::{ops::Range, sync::Arc};
 
 use anyhow::Context as _;
-use client::{ExtensionMetadata, ExtensionProvides, zed_urls};
+use client::zed_urls;
+use cloud_api_types::{ExtensionMetadata, ExtensionProvides};
 use collections::{BTreeMap, BTreeSet};
 use editor::{Editor, EditorElement, EditorStyle};
 use extension_host::{ExtensionManifest, ExtensionOperation, ExtensionStore};
@@ -485,6 +486,10 @@ impl ExtensionsPage {
 
                         matches!(status, ExtensionStatus::NotInstalled)
                     }
+                })
+                .filter(|(_, extension)| match self.provides_filter {
+                    Some(provides) => extension.manifest.provides.contains(&provides),
+                    None => true,
                 })
                 .map(|(ix, _)| ix),
         );
