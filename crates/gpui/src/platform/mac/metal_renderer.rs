@@ -293,7 +293,7 @@ impl MetalRenderer {
         );
 
         let command_queue = device.new_command_queue();
-        let sprite_atlas = Arc::new(MetalAtlas::new(device.clone()));
+        let sprite_atlas = Arc::new(MetalAtlas::new(device.clone(), is_apple_gpu));
         let core_video_texture_cache =
             CVMetalTextureCache::new(None, device.clone(), None).unwrap();
 
