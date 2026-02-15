@@ -201,7 +201,9 @@ impl MetalRenderer {
         // Shared memory can be used only if CPU and GPU share the same memory space.
         // https://developer.apple.com/documentation/metal/setting-resource-storage-modes
         let is_unified_memory = device.has_unified_memory();
-        // Apple family gpus can use memoryless texture which reduce memory usage by a lot
+        // Apple GPU families support memoryless textures, which can significantly reduce
+        // memory usage by keeping render targets in on-chip tile memory instead of
+        // allocating backing store in system memory.
         // https://developer.apple.com/documentation/metal/mtlgpufamily
         let is_apple_gpu = device.supports_family(MTLGPUFamily::Apple1);
 
