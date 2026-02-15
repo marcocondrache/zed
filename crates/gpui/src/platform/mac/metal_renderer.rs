@@ -21,7 +21,7 @@ use core_video::{
 };
 use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{
-    CAMetalLayer, CommandQueue, MTLPixelFormat, MTLResourceOptions, NSRange,
+    CAMetalLayer, CommandQueue, MTLGPUFamily, MTLPixelFormat, MTLResourceOptions, NSRange,
     RenderPassColorAttachmentDescriptorRef,
 };
 use objc::{self, msg_send, sel, sel_impl};
@@ -111,7 +111,8 @@ impl InstanceBufferPool {
 pub(crate) struct MetalRenderer {
     device: metal::Device,
     layer: metal::MetalLayer,
-    unified_memory: bool,
+    is_apple_gpu: bool,
+    is_unified_memory: bool,
     presents_with_transaction: bool,
     command_queue: CommandQueue,
     paths_rasterization_pipeline_state: metal::RenderPipelineState,
@@ -199,7 +200,10 @@ impl MetalRenderer {
 
         // Shared memory can be used only if CPU and GPU share the same memory space.
         // https://developer.apple.com/documentation/metal/setting-resource-storage-modes
-        let unified_memory = device.has_unified_memory();
+        let is_unified_memory = device.has_unified_memory();
+        // Apple family gpus can use memoryless texture which reduce memory usage by a lot
+        // https://developer.apple.com/documentation/metal/mtlgpufamily
+        let is_apple_gpu = device.supports_family(MTLGPUFamily::Apple1);
 
         let unit_vertices = [
             to_float2_bits(point(0., 0.)),
@@ -212,7 +216,7 @@ impl MetalRenderer {
         let unit_vertices = device.new_buffer_with_data(
             unit_vertices.as_ptr() as *const c_void,
             mem::size_of_val(&unit_vertices) as u64,
-            if unified_memory {
+            if is_unified_memory {
                 MTLResourceOptions::StorageModeShared
                     | MTLResourceOptions::CPUCacheModeWriteCombined
             } else {
@@ -295,7 +299,8 @@ impl MetalRenderer {
             device,
             layer,
             presents_with_transaction: false,
-            unified_memory,
+            is_apple_gpu,
+            is_unified_memory,
             command_queue,
             paths_rasterization_pipeline_state,
             path_sprites_pipeline_state,
@@ -373,7 +378,7 @@ impl MetalRenderer {
         if self.path_sample_count > 1 {
             // https://developer.apple.com/documentation/metal/choosing-a-resource-storage-mode-for-apple-gpus
             // Rendering MSAA textures are done in a single pass, so we can use memory-less storage on Apple Silicon
-            let storage_mode = if self.unified_memory {
+            let storage_mode = if self.is_apple_gpu {
                 metal::MTLStorageMode::Memoryless
             } else {
                 metal::MTLStorageMode::Private
@@ -418,7 +423,7 @@ impl MetalRenderer {
             let mut instance_buffer = self
                 .instance_buffer_pool
                 .lock()
-                .acquire(&self.device, self.unified_memory);
+                .acquire(&self.device, self.is_unified_memory);
 
             let command_buffer =
                 self.draw_primitives(scene, &mut instance_buffer, drawable, viewport_size);
@@ -485,7 +490,7 @@ impl MetalRenderer {
             let mut instance_buffer = self
                 .instance_buffer_pool
                 .lock()
-                .acquire(&self.device, self.unified_memory);
+                .acquire(&self.device, self.is_unified_memory);
 
             let command_buffer =
                 self.draw_primitives(scene, &mut instance_buffer, drawable, viewport_size);
@@ -682,7 +687,7 @@ impl MetalRenderer {
 
         command_encoder.end_encoding();
 
-        if !self.unified_memory {
+        if !self.is_unified_memory {
             // Sync the instance buffer to the GPU
             instance_buffer.metal_buffer.did_modify_range(NSRange {
                 location: 0,
