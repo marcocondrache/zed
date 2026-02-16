@@ -1,4 +1,4 @@
-mod project_panel_settings;
+pub mod project_panel_settings;
 mod utils;
 
 use anyhow::{Context as _, Result, anyhow};
@@ -794,7 +794,11 @@ impl ProjectPanel {
                         {
                             match project_panel.confirm_edit(false, window, cx) {
                                 Some(task) => {
-                                    task.detach_and_notify_err(window, cx);
+                                    task.detach_and_notify_err(
+                                        project_panel.workspace.clone(),
+                                        window,
+                                        cx,
+                                    );
                                 }
                                 None => {
                                     project_panel.discard_edit_state(window, cx);
@@ -1235,10 +1239,10 @@ impl ProjectPanel {
                             .when(!is_collab && is_root, |menu| {
                                 menu.separator()
                                     .action(
-                                        "Add Folder to Project…",
+                                        "Add Project to Workspace…",
                                         Box::new(workspace::AddFolderToProject),
                                     )
-                                    .action("Remove from Project", Box::new(RemoveFromProject))
+                                    .action("Remove from Workspace", Box::new(RemoveFromProject))
                             })
                             .when(is_dir && !is_root, |menu| {
                                 menu.separator().action(
@@ -1675,7 +1679,7 @@ impl ProjectPanel {
 
     fn confirm(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(task) = self.confirm_edit(true, window, cx) {
-            task.detach_and_notify_err(window, cx);
+            task.detach_and_notify_err(self.workspace.clone(), window, cx);
         }
     }
 
@@ -3242,8 +3246,9 @@ impl ProjectPanel {
             }
 
             let item_count = paste_tasks.len();
+            let workspace = self.workspace.clone();
 
-            cx.spawn_in(window, async move |project_panel, cx| {
+            cx.spawn_in(window, async move |project_panel, mut cx| {
                 let mut last_succeed = None;
                 let mut operations = Vec::new();
 
@@ -3254,8 +3259,9 @@ impl ProjectPanel {
                             old_path,
                             new_path,
                         } => {
-                            if let Some(CreatedEntry::Included(entry)) =
-                                task.await.notify_async_err(cx)
+                            if let Some(CreatedEntry::Included(entry)) = task
+                                .await
+                                .notify_workspace_async_err(workspace.clone(), &mut cx)
                             {
                                 operations
                                     .push(ProjectPanelOperation::Rename { old_path, new_path });
@@ -3263,7 +3269,10 @@ impl ProjectPanel {
                             }
                         }
                         PasteTask::Copy { task, destination } => {
-                            if let Some(Some(entry)) = task.await.notify_async_err(cx) {
+                            if let Some(Some(entry)) = task
+                                .await
+                                .notify_workspace_async_err(workspace.clone(), &mut cx)
+                            {
                                 operations.push(ProjectPanelOperation::Create {
                                     is_directory: entry.is_dir(),
                                     project_path: destination,
@@ -3622,7 +3631,7 @@ impl ProjectPanel {
         if let Some((file_path1, file_path2)) = selected_files {
             self.workspace
                 .update(cx, |workspace, cx| {
-                    FileDiffView::open(file_path1, file_path2, workspace, window, cx)
+                    FileDiffView::open(file_path1, file_path2, workspace.weak_handle(), window, cx)
                         .detach_and_log_err(cx);
                 })
                 .ok();
