@@ -673,7 +673,7 @@ impl<'a> Iterator for TabChunks<'a> {
         let newline_count = prefix_newlines.count_ones();
         if newline_count > 0 {
             let last_newline_bit = 128 - prefix_newlines.leading_zeros();
-            let chars_after_last_newline = (prefix_chars >> last_newline_bit).count_ones();
+            let chars_after_last_newline = prefix_chars.unbounded_shr(last_newline_bit).count_ones();
             let bytes_after_last_newline = prefix_len as u32 - last_newline_bit;
 
             self.column = chars_after_last_newline;
