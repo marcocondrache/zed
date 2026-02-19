@@ -7503,7 +7503,7 @@ dependencies = [
  "log",
  "mach2 0.5.0",
  "media",
- "metal 0.29.0",
+ "metal",
  "objc",
  "parking_lot",
  "pathfinder_geometry",
