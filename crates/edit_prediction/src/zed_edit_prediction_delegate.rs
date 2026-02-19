@@ -3,7 +3,8 @@ use std::{cmp, sync::Arc};
 use client::{Client, UserStore};
 use cloud_llm_client::EditPredictionRejectReason;
 use edit_prediction_types::{
-    DataCollectionState, EditPredictionDelegate, EditPredictionIconSet, SuggestionDisplayType,
+    DataCollectionState, EditPredictionDelegate, EditPredictionDiscardReason,
+    EditPredictionIconSet, SuggestionDisplayType,
 };
 use gpui::{App, Entity, prelude::*};
 use language::{Buffer, ToPoint as _};
@@ -69,13 +70,14 @@ impl EditPredictionDelegate for ZedEditPredictionDelegate {
                 .with_down(IconName::SweepAiDown)
                 .with_error(IconName::SweepAiError),
             EditPredictionModel::Mercury => EditPredictionIconSet::new(IconName::Inception),
-            EditPredictionModel::Zeta1 | EditPredictionModel::Zeta2 { .. } => {
+            EditPredictionModel::Zeta1 | EditPredictionModel::Zeta2 => {
                 EditPredictionIconSet::new(IconName::ZedPredict)
                     .with_disabled(IconName::ZedPredictDisabled)
                     .with_up(IconName::ZedPredictUp)
                     .with_down(IconName::ZedPredictDown)
                     .with_error(IconName::ZedPredictError)
             }
+            EditPredictionModel::Ollama => EditPredictionIconSet::new(IconName::AiOllama),
         }
     }
 
@@ -166,9 +168,13 @@ impl EditPredictionDelegate for ZedEditPredictionDelegate {
         });
     }
 
-    fn discard(&mut self, cx: &mut Context<Self>) {
-        self.store.update(cx, |store, _cx| {
-            store.reject_current_prediction(EditPredictionRejectReason::Discarded, &self.project);
+    fn discard(&mut self, reason: EditPredictionDiscardReason, cx: &mut Context<Self>) {
+        let reject_reason = match reason {
+            EditPredictionDiscardReason::Rejected => EditPredictionRejectReason::Rejected,
+            EditPredictionDiscardReason::Ignored => EditPredictionRejectReason::Discarded,
+        };
+        self.store.update(cx, |store, cx| {
+            store.reject_current_prediction(reject_reason, &self.project, cx);
         });
     }
 
@@ -206,6 +212,7 @@ impl EditPredictionDelegate for ZedEditPredictionDelegate {
                 store.reject_current_prediction(
                     EditPredictionRejectReason::InterpolatedEmpty,
                     &self.project,
+                    cx,
                 );
                 return None;
             };
@@ -244,7 +251,7 @@ impl EditPredictionDelegate for ZedEditPredictionDelegate {
             Some(edit_prediction_types::EditPrediction::Local {
                 id: Some(prediction.id.to_string().into()),
                 edits: edits[edit_start_ix..edit_end_ix].to_vec(),
-                cursor_position: None,
+                cursor_position: prediction.cursor_position,
                 edit_preview: Some(prediction.edit_preview.clone()),
             })
         })
