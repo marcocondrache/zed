@@ -3114,7 +3114,7 @@ fn render_participant_name_and_handle(user: &User) -> impl IntoElement {
 
 impl Render for CollabPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let status = self.client.status().borrow().clone();
+        let status = *self.client.status().borrow();
 
         v_flex()
             .key_context(self.dispatch_context(window, cx))
