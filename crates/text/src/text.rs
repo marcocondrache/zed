@@ -542,7 +542,7 @@ pub struct Fragment {
     pub insertion_offset: usize,
     pub len: usize,
     pub visible: bool,
-    pub deletions: SmallVec<[clock::Lamport; 1]>,
+    pub deletions: SmallVec<[clock::Lamport; 2]>,
     pub max_undos: clock::Global,
 }
 
