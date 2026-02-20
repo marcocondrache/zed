@@ -29479,7 +29479,13 @@ async fn test_sticky_scroll_with_expanded_deleted_diff_hunks(
 
     let mut sticky_headers = |offset: ScrollOffset| {
         cx.update_editor(|e, window, cx| {
-            e.scroll(gpui::Point { x: 0., y: offset }, None, window, cx);
+            e.scroll(
+                gpui::Point { x: 0., y: offset },
+                None,
+                ScrollBehavior::Instant,
+                window,
+                cx,
+            );
         });
         cx.run_until_parked();
         cx.update_editor(|e, window, cx| {
