@@ -502,7 +502,9 @@ pub fn initialize_workspace(
         workspace.set_panels_task(panels_task);
         register_actions(app_state.clone(), workspace, window, cx);
 
-        workspace.focus_handle(cx).focus(window, cx);
+        if !workspace.has_active_modal(window, cx) {
+            workspace.focus_handle(cx).focus(window, cx);
+        }
     })
     .detach();
 }
@@ -5022,7 +5024,7 @@ mod tests {
                 cx,
             );
             image_viewer::init(cx);
-            language_model::init(app_state.client.clone(), cx);
+            language_model::init(app_state.user_store.clone(), app_state.client.clone(), cx);
             language_models::init(app_state.user_store.clone(), app_state.client.clone(), cx);
             web_search::init(cx);
             git_graph::init(cx);
