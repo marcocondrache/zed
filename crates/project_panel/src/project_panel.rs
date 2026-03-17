@@ -899,7 +899,7 @@ impl ProjectPanel {
                     unfolded_dir_ids: Default::default(),
                 },
                 update_visible_entries_task: Default::default(),
-                undo_manager: UndoManager::new(project.clone(), workspace.weak_handle()),
+                undo_manager: UndoManager::new(workspace.weak_handle()),
             };
             this.update_visible_entries(None, false, false, window, cx);
 

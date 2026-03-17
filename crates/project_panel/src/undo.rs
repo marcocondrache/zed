@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use circular_buffer::CircularBuffer;
-use gpui::{AppContext, Entity, SharedString, Task, WeakEntity};
-use project::{Project, ProjectPath};
+use gpui::{AppContext, SharedString, Task, WeakEntity};
+use project::ProjectPath;
 use ui::{App, IntoElement, Label, ParentElement, Styled, v_flex};
 use workspace::{
     Workspace,
@@ -33,15 +33,13 @@ impl ProjectPanelOperation {
 }
 
 pub struct UndoManager {
-    project: Entity<Project>,
     workspace: WeakEntity<Workspace>,
     stack: Box<CircularBuffer<MAX_UNDO_OPERATIONS, ProjectPanelOperation>>,
 }
 
 impl UndoManager {
-    pub fn new(project: Entity<Project>, workspace: WeakEntity<Workspace>) -> Self {
+    pub fn new(workspace: WeakEntity<Workspace>) -> Self {
         Self {
-            project,
             workspace,
             stack: CircularBuffer::boxed(),
         }
@@ -87,42 +85,57 @@ impl UndoManager {
     ) -> Task<Vec<anyhow::Error>> {
         match operation {
             ProjectPanelOperation::Create { project_path } => {
-                let Some(entry_id) = self
-                    .project
-                    .read(cx)
-                    .entry_for_path(&project_path, cx)
-                    .map(|e| e.id)
-                else {
-                    return Task::ready(vec![anyhow!("No entry for path.")]);
+                let Some(workspace) = self.workspace.upgrade() else {
+                    return Task::ready(vec![anyhow!("Failed to obtain workspace.")]);
                 };
-                let Some(task) = self
-                    .project
-                    .update(cx, |project, cx| project.delete_entry(entry_id, true, cx))
-                else {
-                    return Task::ready(vec![anyhow!("Failed to trash entry.")]);
+
+                let result = workspace.update(cx, |workspace, cx| {
+                    workspace.project().update(cx, |project, cx| {
+                        let entry_id = project
+                            .entry_for_path(&project_path, cx)
+                            .map(|entry| entry.id)
+                            .ok_or_else(|| anyhow!("No entry for path."))?;
+
+                        project
+                            .delete_entry(entry_id, true, cx)
+                            .ok_or_else(|| anyhow!("Failed to trash entry."))
+                    })
+                });
+
+                let task = match result {
+                    Ok(task) => task,
+                    Err(err) => return Task::ready(vec![err]),
                 };
 
                 cx.spawn(async move |_| match task.await {
                     Ok(_) => vec![],
-                    Err(err) => vec![anyhow!(err)],
+                    Err(err) => vec![err],
                 })
             }
             ProjectPanelOperation::Rename { old_path, new_path } => {
-                let Some(entry_id) = self
-                    .project
-                    .read(cx)
-                    .entry_for_path(&new_path, cx)
-                    .map(|e| e.id)
-                else {
-                    return Task::ready(vec![anyhow!("no entry for path")]);
+                let Some(workspace) = self.workspace.upgrade() else {
+                    return Task::ready(vec![anyhow!("Failed to obtain workspace.")]);
                 };
-                let task = self.project.update(cx, |project, cx| {
-                    project.rename_entry(entry_id, old_path.clone(), cx)
+
+                let result = workspace.update(cx, |workspace, cx| {
+                    workspace.project().update(cx, |project, cx| {
+                        let entry_id = project
+                            .entry_for_path(&new_path, cx)
+                            .map(|entry| entry.id)
+                            .ok_or_else(|| anyhow!("No entry for path."))?;
+
+                        Ok(project.rename_entry(entry_id, old_path.clone(), cx))
+                    })
                 });
+
+                let task = match result {
+                    Ok(task) => task,
+                    Err(err) => return Task::ready(vec![err]),
+                };
 
                 cx.spawn(async move |_| match task.await {
                     Ok(_) => vec![],
-                    Err(err) => vec![anyhow!(err)],
+                    Err(err) => vec![err],
                 })
             }
             ProjectPanelOperation::Batch(operations) => {
