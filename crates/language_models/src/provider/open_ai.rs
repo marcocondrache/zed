@@ -506,6 +506,11 @@ pub fn into_open_ai(
         model: model_id.into(),
         messages,
         stream,
+        stream_options: if stream {
+            Some(open_ai::StreamOptions::default())
+        } else {
+            None
+        },
         stop: request.stop,
         temperature: request.temperature.or(Some(1.0)),
         max_completion_tokens: max_output_tokens,
@@ -1415,9 +1420,11 @@ impl Render for ConfigurationView {
             )
             .child(
                 Button::new("docs", "Learn More")
-                    .icon(IconName::ArrowUpRight)
-                    .icon_size(IconSize::Small)
-                    .icon_color(Color::Muted)
+                    .end_icon(
+                        Icon::new(IconName::ArrowUpRight)
+                            .size(IconSize::Small)
+                            .color(Color::Muted),
+                    )
                     .on_click(move |_, _window, cx| {
                         cx.open_url("https://zed.dev/docs/ai/llm-providers#openai-api-compatible")
                     }),

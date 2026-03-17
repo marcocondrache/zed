@@ -27,13 +27,14 @@ use gpui::{
     KeyContext, SharedString, Subscription, Task, TextStyle, WeakEntity,
 };
 use language::{Buffer, Language, language_settings::InlayHintKind};
+use project::AgentId;
 use project::{CompletionIntent, InlayHint, InlayHintLabel, InlayId, Project, Worktree};
 use prompt_store::PromptStore;
 use rope::Point;
 use settings::Settings;
 use std::{cell::RefCell, fmt::Write, ops::Range, rc::Rc, sync::Arc};
 use theme::ThemeSettings;
-use ui::{ButtonLike, ButtonStyle, ContextMenu, Disclosure, ElevationIndex, prelude::*};
+use ui::{ContextMenu, Disclosure, ElevationIndex, prelude::*};
 use util::paths::PathStyle;
 use util::{ResultExt, debug_panic};
 use workspace::{CollaboratorId, Workspace};
@@ -45,7 +46,7 @@ pub struct MessageEditor {
     workspace: WeakEntity<Workspace>,
     prompt_capabilities: Rc<RefCell<acp::PromptCapabilities>>,
     available_commands: Rc<RefCell<Vec<acp::AvailableCommand>>>,
-    agent_name: SharedString,
+    agent_id: AgentId,
     thread_store: Option<Entity<ThreadStore>>,
     _subscriptions: Vec<Subscription>,
     _parse_slash_command_task: Task<()>,
@@ -113,7 +114,7 @@ impl MessageEditor {
         prompt_store: Option<Entity<PromptStore>>,
         prompt_capabilities: Rc<RefCell<acp::PromptCapabilities>>,
         available_commands: Rc<RefCell<Vec<acp::AvailableCommand>>>,
-        agent_name: SharedString,
+        agent_id: AgentId,
         placeholder: &str,
         mode: EditorMode,
         window: &mut Window,
@@ -236,7 +237,7 @@ impl MessageEditor {
             workspace,
             prompt_capabilities,
             available_commands,
-            agent_name,
+            agent_id,
             thread_store,
             _subscriptions: subscriptions,
             _parse_slash_command_task: Task::ready(()),
@@ -379,7 +380,7 @@ impl MessageEditor {
     fn validate_slash_commands(
         text: &str,
         available_commands: &[acp::AvailableCommand],
-        agent_name: &str,
+        agent_id: &AgentId,
     ) -> Result<()> {
         if let Some(parsed_command) = SlashCommandCompletion::try_parse(text, 0) {
             if let Some(command_name) = parsed_command.command {
@@ -392,7 +393,7 @@ impl MessageEditor {
                     return Err(anyhow!(
                         "The /{} command is not supported by {}.\n\nAvailable commands: {}",
                         command_name,
-                        agent_name,
+                        agent_id,
                         if available_commands.is_empty() {
                             "none".to_string()
                         } else {
@@ -416,11 +417,11 @@ impl MessageEditor {
     ) -> Task<Result<(Vec<acp::ContentBlock>, Vec<Entity<Buffer>>)>> {
         let text = self.editor.read(cx).text(cx);
         let available_commands = self.available_commands.borrow().clone();
-        let agent_name = self.agent_name.clone();
+        let agent_id = self.agent_id.clone();
         let build_task = self.build_content_blocks(full_mention_content, cx);
 
         cx.spawn(async move |_, _cx| {
-            Self::validate_slash_commands(&text, &available_commands, &agent_name)?;
+            Self::validate_slash_commands(&text, &available_commands, &agent_id)?;
             build_task.await
         })
     }
@@ -1041,6 +1042,88 @@ impl MessageEditor {
         });
     }
 
+    pub fn insert_branch_diff_crease(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+
+        let project = workspace.read(cx).project().clone();
+
+        let Some(repo) = project.read(cx).active_repository(cx) else {
+            return;
+        };
+
+        let default_branch_receiver = repo.update(cx, |repo, _| repo.default_branch(false));
+        let editor = self.editor.clone();
+        let mention_set = self.mention_set.clone();
+        let weak_workspace = self.workspace.clone();
+
+        window
+            .spawn(cx, async move |cx| {
+                let base_ref: SharedString = default_branch_receiver
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok())
+                    .flatten()
+                    .ok_or_else(|| anyhow!("Could not determine default branch"))?;
+
+                cx.update(|window, cx| {
+                    let mention_uri = MentionUri::GitDiff {
+                        base_ref: base_ref.to_string(),
+                    };
+                    let mention_text = mention_uri.as_link().to_string();
+
+                    let (excerpt_id, text_anchor, content_len) = editor.update(cx, |editor, cx| {
+                        let buffer = editor.buffer().read(cx);
+                        let snapshot = buffer.snapshot(cx);
+                        let (excerpt_id, _, buffer_snapshot) = snapshot.as_singleton().unwrap();
+                        let text_anchor = editor
+                            .selections
+                            .newest_anchor()
+                            .start
+                            .text_anchor
+                            .bias_left(&buffer_snapshot);
+
+                        editor.insert(&mention_text, window, cx);
+                        editor.insert(" ", window, cx);
+
+                        (excerpt_id, text_anchor, mention_text.len())
+                    });
+
+                    let Some((crease_id, tx)) = insert_crease_for_mention(
+                        excerpt_id,
+                        text_anchor,
+                        content_len,
+                        mention_uri.name().into(),
+                        mention_uri.icon_path(cx),
+                        mention_uri.tooltip_text(),
+                        Some(mention_uri.clone()),
+                        Some(weak_workspace),
+                        None,
+                        editor,
+                        window,
+                        cx,
+                    ) else {
+                        return;
+                    };
+                    drop(tx);
+
+                    let confirm_task = mention_set.update(cx, |mention_set, cx| {
+                        mention_set.confirm_mention_for_git_diff(base_ref, cx)
+                    });
+
+                    let mention_task = cx
+                        .spawn(async move |_cx| confirm_task.await.map_err(|e| e.to_string()))
+                        .shared();
+
+                    mention_set.update(cx, |mention_set, _| {
+                        mention_set.insert_mention(crease_id, mention_uri, mention_task);
+                    });
+                })
+            })
+            .detach_and_log_err(cx);
+    }
+
     fn insert_crease_impl(
         &mut self,
         text: String,
@@ -1079,11 +1162,9 @@ impl MessageEditor {
                 render: Arc::new({
                     let title = title.clone();
                     move |_fold_id, _fold_range, _cx| {
-                        ButtonLike::new("crease")
-                            .style(ButtonStyle::Filled)
+                        Button::new("crease", title.clone())
                             .layer(ElevationIndex::ElevatedSurface)
-                            .child(Icon::new(icon))
-                            .child(Label::new(title.clone()).single_line())
+                            .start_icon(Icon::new(icon))
                             .into_any_element()
                     }
                 }),
@@ -1599,7 +1680,7 @@ mod tests {
 
     use crate::completion_provider::{PromptCompletionProviderDelegate, PromptContextType};
     use crate::{
-        connection_view::tests::init_test,
+        conversation_view::tests::init_test,
         message_editor::{Mention, MessageEditor, parse_mention_links},
     };
 

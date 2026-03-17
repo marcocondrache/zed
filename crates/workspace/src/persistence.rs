@@ -341,7 +341,6 @@ pub fn read_serialized_multi_workspaces(
                 .map(read_multi_workspace_state)
                 .unwrap_or_default();
             model::SerializedMultiWorkspace {
-                id: window_id.map(|id| model::MultiWorkspaceId(id.as_u64())),
                 workspaces: group,
                 state,
             }
@@ -1784,11 +1783,17 @@ impl WorkspaceDb {
         }
     }
 
-    async fn all_paths_exist_with_a_directory(paths: &[PathBuf], fs: &dyn Fs) -> bool {
+    async fn all_paths_exist_with_a_directory(
+        paths: &[PathBuf],
+        fs: &dyn Fs,
+        timestamp: Option<DateTime<Utc>>,
+    ) -> bool {
         let mut any_dir = false;
         for path in paths {
             match fs.metadata(path).await.ok().flatten() {
-                None => return false,
+                None => {
+                    return timestamp.is_some_and(|t| Utc::now() - t < chrono::Duration::days(7));
+                }
                 Some(meta) => {
                     if meta.is_dir {
                         any_dir = true;
@@ -1844,7 +1849,9 @@ impl WorkspaceDb {
             // If a local workspace points to WSL, this check will cause us to wait for the
             // WSL VM and file server to boot up. This can block for many seconds.
             // Supported scenarios use remote workspaces.
-            if !has_wsl_path && Self::all_paths_exist_with_a_directory(paths.paths(), fs).await {
+            if !has_wsl_path
+                && Self::all_paths_exist_with_a_directory(paths.paths(), fs, Some(timestamp)).await
+            {
                 result.push((id, SerializedWorkspaceLocation::Local, paths, timestamp));
             } else {
                 delete_tasks.push(self.delete_workspace_by_id(id));
@@ -1904,7 +1911,7 @@ impl WorkspaceDb {
                     window_id,
                 });
             } else {
-                if Self::all_paths_exist_with_a_directory(paths.paths(), fs).await {
+                if Self::all_paths_exist_with_a_directory(paths.paths(), fs, None).await {
                     workspaces.push(SessionWorkspace {
                         workspace_id,
                         location: SerializedWorkspaceLocation::Local,
@@ -3878,6 +3885,7 @@ mod tests {
             window_10,
             MultiWorkspaceState {
                 active_workspace_id: Some(WorkspaceId(2)),
+                sidebar_open: true,
             },
         )
         .await;
@@ -3886,6 +3894,7 @@ mod tests {
             window_20,
             MultiWorkspaceState {
                 active_workspace_id: Some(WorkspaceId(3)),
+                sidebar_open: false,
             },
         )
         .await;
@@ -3923,20 +3932,23 @@ mod tests {
         // Should produce 3 groups: window 10, window 20, and the orphan.
         assert_eq!(results.len(), 3);
 
-        // Window 10 group: 2 workspaces, active_workspace_id = 2.
+        // Window 10 group: 2 workspaces, active_workspace_id = 2, sidebar open.
         let group_10 = &results[0];
         assert_eq!(group_10.workspaces.len(), 2);
         assert_eq!(group_10.state.active_workspace_id, Some(WorkspaceId(2)));
+        assert_eq!(group_10.state.sidebar_open, true);
 
-        // Window 20 group: 1 workspace, active_workspace_id = 3.
+        // Window 20 group: 1 workspace, active_workspace_id = 3, sidebar closed.
         let group_20 = &results[1];
         assert_eq!(group_20.workspaces.len(), 1);
         assert_eq!(group_20.state.active_workspace_id, Some(WorkspaceId(3)));
+        assert_eq!(group_20.state.sidebar_open, false);
 
         // Orphan group: no window_id, so state is default.
         let group_none = &results[2];
         assert_eq!(group_none.workspaces.len(), 1);
         assert_eq!(group_none.state.active_workspace_id, None);
+        assert_eq!(group_none.state.sidebar_open, false);
     }
 
     #[gpui::test]
