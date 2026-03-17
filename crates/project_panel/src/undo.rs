@@ -1,7 +1,7 @@
 use anyhow::anyhow;
-use circular_buffer::CircularBuffer;
 use gpui::{AppContext, SharedString, Task, WeakEntity};
 use project::ProjectPath;
+use std::collections::VecDeque;
 use ui::{App, IntoElement, Label, ParentElement, Styled, v_flex};
 use workspace::{
     Workspace,
@@ -34,14 +34,21 @@ impl ProjectPanelOperation {
 
 pub struct UndoManager {
     workspace: WeakEntity<Workspace>,
-    stack: Box<CircularBuffer<MAX_UNDO_OPERATIONS, ProjectPanelOperation>>,
+    stack: VecDeque<ProjectPanelOperation>,
+    /// Maximum number of operations to keep on the undo stack.
+    limit: usize,
 }
 
 impl UndoManager {
     pub fn new(workspace: WeakEntity<Workspace>) -> Self {
+        Self::new_with_limit(workspace, MAX_UNDO_OPERATIONS)
+    }
+
+    pub fn new_with_limit(workspace: WeakEntity<Workspace>, limit: usize) -> Self {
         Self {
             workspace,
-            stack: CircularBuffer::boxed(),
+            limit,
+            stack: VecDeque::new(),
         }
     }
 
@@ -69,6 +76,10 @@ impl UndoManager {
 
     pub fn record(&mut self, operations: impl IntoIterator<Item = ProjectPanelOperation>) {
         if let Some(operation) = ProjectPanelOperation::batch(operations) {
+            if self.stack.len() >= self.limit {
+                self.stack.pop_front();
+            }
+
             self.stack.push_back(operation);
         }
     }
@@ -195,5 +206,74 @@ impl UndoManager {
                 })
             })
             .ok();
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        ProjectPanel, project_panel_tests,
+        undo::{ProjectPanelOperation, UndoManager},
+    };
+    use gpui::{Entity, TestAppContext, VisualTestContext};
+    use project::{FakeFs, Project, ProjectPath};
+    use std::sync::Arc;
+    use util::rel_path::rel_path;
+    use workspace::MultiWorkspace;
+
+    struct TestContext {
+        project: Entity<Project>,
+        panel: Entity<ProjectPanel>,
+    }
+
+    async fn init_test(cx: &mut TestAppContext) -> TestContext {
+        project_panel_tests::init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs.clone(), ["/root".as_ref()], cx).await;
+        let window =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = window
+            .read_with(cx, |mw, _| mw.workspace().clone())
+            .unwrap();
+        let cx = &mut VisualTestContext::from_window(window.into(), cx);
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        TestContext { project, panel }
+    }
+
+    #[gpui::test]
+    async fn test_limit(cx: &mut TestAppContext) {
+        let test_context = init_test(cx).await;
+        let worktree_id = test_context.project.update(cx, |project, cx| {
+            project.visible_worktrees(cx).next().unwrap().read(cx).id()
+        });
+
+        let build_create_operation = |file_name: &str| ProjectPanelOperation::Create {
+            project_path: ProjectPath {
+                path: Arc::from(rel_path(file_name)),
+                worktree_id,
+            },
+        };
+
+        // Since we're updating the `ProjectPanel`'s undo manager with one whose
+        // limit is 3 operations, we only need to create 4 operations which
+        // we'll record, in order to confirm that the oldest operation is
+        // evicted.
+        let operation_a = build_create_operation("file_a.txt");
+        let operation_b = build_create_operation("file_b.txt");
+        let operation_c = build_create_operation("file_c.txt");
+        let operation_d = build_create_operation("file_d.txt");
+
+        test_context.panel.update(cx, move |panel, _cx| {
+            panel.undo_manager = UndoManager::new_with_limit(panel.workspace.clone(), 3);
+            panel.undo_manager.record(vec![operation_a]);
+            panel.undo_manager.record(vec![operation_b]);
+            panel.undo_manager.record(vec![operation_c]);
+            panel.undo_manager.record(vec![operation_d]);
+
+            assert_eq!(panel.undo_manager.stack.len(), 3);
+        });
     }
 }

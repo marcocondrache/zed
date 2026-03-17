@@ -10202,7 +10202,7 @@ async fn run_create_file_in_folded_path_case(
     }
 }
 
-fn init_test(cx: &mut TestAppContext) {
+pub(crate) fn init_test(cx: &mut TestAppContext) {
     cx.update(|cx| {
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);

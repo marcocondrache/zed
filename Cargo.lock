@@ -13206,7 +13206,6 @@ name = "project_panel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "circular-buffer",
  "client",
  "collections",
  "command_palette_hooks",
