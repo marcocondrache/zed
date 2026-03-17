@@ -4,7 +4,7 @@ use editor::MultiBufferOffset;
 use gpui::{Empty, Entity, TestAppContext, VisualTestContext};
 use menu::Cancel;
 use pretty_assertions::assert_eq;
-use project::FakeFs;
+use project::{FakeFs, ProjectPath};
 use serde_json::json;
 use settings::{ProjectPanelAutoOpenSettings, SettingsStore};
 use std::path::{Path, PathBuf};
@@ -2429,6 +2429,79 @@ async fn test_undo_with_empty_stack(cx: &mut gpui::TestAppContext) {
     assert!(
         find_project_entry(&panel, "root/a.txt", cx).is_some(),
         "File tree should be unchanged after undo on empty stack"
+    );
+}
+
+#[gpui::test]
+async fn test_undo_batch(cx: &mut gpui::TestAppContext) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        "/root",
+        json!({
+            "src": {
+                "main.rs": "// Code!"
+            }
+        }),
+    )
+    .await;
+
+    let project = Project::test(fs.clone(), ["/root".as_ref()], cx).await;
+    let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let workspace = window
+        .read_with(cx, |mw, _| mw.workspace().clone())
+        .unwrap();
+    let cx = &mut VisualTestContext::from_window(window.into(), cx);
+    let panel = workspace.update_in(cx, ProjectPanel::new);
+    let worktree_id = project.update(cx, |project, cx| {
+        project.visible_worktrees(cx).next().unwrap().read(cx).id()
+    });
+    cx.run_until_parked();
+
+    // Since there currently isn't a way to both create a folder and the file
+    // within it as two seperate operations batched under the same
+    // `ProjectPanelOperation::Batch` operation, we'll simply record those
+    // ourselves, knowing that the filesystem already has the folder and file
+    // being provided in the operations.
+    panel.update(cx, |panel, _cx| {
+        panel.undo_manager.record_batch(vec![
+            ProjectPanelOperation::Create {
+                project_path: ProjectPath {
+                    worktree_id,
+                    path: Arc::from(rel_path("src/main.rs")),
+                },
+            },
+            ProjectPanelOperation::Create {
+                project_path: ProjectPath {
+                    worktree_id,
+                    path: Arc::from(rel_path("src/")),
+                },
+            },
+        ]);
+    });
+
+    // Ensure that `src/main.rs` is present in the filesystem before proceeding,
+    // otherwise this test is irrelevant.
+    assert_eq!(fs.files(), vec![PathBuf::from(path!("/root/src/main.rs"))]);
+    assert_eq!(
+        fs.directories(false),
+        vec![
+            PathBuf::from(path!("/")),
+            PathBuf::from(path!("/root/")),
+            PathBuf::from(path!("/root/src/"))
+        ]
+    );
+
+    panel.update_in(cx, |panel, window, cx| {
+        panel.undo(&Undo, window, cx);
+    });
+    cx.run_until_parked();
+
+    assert_eq!(fs.files().len(), 0);
+    assert_eq!(
+        fs.directories(false),
+        vec![PathBuf::from(path!("/")), PathBuf::from(path!("/root/"))]
     );
 }
 

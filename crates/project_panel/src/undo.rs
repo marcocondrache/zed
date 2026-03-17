@@ -149,23 +149,29 @@ impl UndoManager {
                 })
             }
             ProjectPanelOperation::Batch(operations) => {
+                // When reverting operations in a batch, we reverse the order of
+                // operations to handle dependencies between them. For example,
+                // if a batch contains the following order of operations:
+                //
+                // 1. Create `src/`
+                // 2. Create `src/main.rs`
+                //
+                // If we first try to revert the directory creation, it would
+                // fail because there's still files inside the directory.
+                // Operations are also reverted sequentially in order to avoid
+                // this same problem.
                 let tasks: Vec<_> = operations
                     .into_iter()
-                    .map(|op| self.revert_operation(op, cx))
+                    .rev()
+                    .map(|operation| self.revert_operation(operation, cx))
                     .collect();
 
-                // TODO!: Update to use a sequential approach instead of
-                // parallel tasks, and to collect the errors so we can display
-                // all in an error message.
                 cx.spawn(async move |_| {
-                    let results = futures::future::join_all(tasks).await;
-                    let errors: Vec<_> = results
-                        .into_iter()
-                        .filter(|errors| !errors.is_empty())
-                        .flatten()
-                        .collect();
-
-                    if errors.is_empty() { vec![] } else { errors }
+                    let mut errors = Vec::new();
+                    for task in tasks {
+                        errors.extend(task.await);
+                    }
+                    errors
                 })
             }
         }
