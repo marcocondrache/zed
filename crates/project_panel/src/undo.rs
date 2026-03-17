@@ -10,6 +10,7 @@ use workspace::{
 
 const MAX_UNDO_OPERATIONS: usize = 10_000;
 
+#[derive(Clone)]
 pub enum ProjectPanelOperation {
     Batch(Vec<ProjectPanelOperation>),
     Create {
@@ -19,17 +20,6 @@ pub enum ProjectPanelOperation {
         old_path: ProjectPath,
         new_path: ProjectPath,
     },
-}
-
-impl ProjectPanelOperation {
-    pub fn batch(operations: impl IntoIterator<Item = Self>) -> Option<Self> {
-        let mut operations: Vec<_> = operations.into_iter().collect();
-        match operations.len() {
-            0 => None,
-            1 => operations.pop(),
-            _ => Some(Self::Batch(operations)),
-        }
-    }
 }
 
 pub struct UndoManager {
@@ -74,14 +64,23 @@ impl UndoManager {
         }
     }
 
-    pub fn record(&mut self, operations: impl IntoIterator<Item = ProjectPanelOperation>) {
-        if let Some(operation) = ProjectPanelOperation::batch(operations) {
-            if self.stack.len() >= self.limit {
-                self.stack.pop_front();
-            }
-
-            self.stack.push_back(operation);
+    pub fn record(&mut self, operation: ProjectPanelOperation) {
+        if self.stack.len() >= self.limit {
+            self.stack.pop_front();
         }
+
+        self.stack.push_back(operation);
+    }
+
+    pub fn record_batch(&mut self, operations: impl IntoIterator<Item = ProjectPanelOperation>) {
+        let mut operations = operations.into_iter().collect::<Vec<_>>();
+        let operation = match operations.len() {
+            0 => return,
+            1 => operations.pop().unwrap(),
+            _ => ProjectPanelOperation::Batch(operations),
+        };
+
+        self.record(operation);
     }
 
     /// Attempts to revert the provided `operation`, returning a vector of errors
@@ -268,10 +267,10 @@ mod test {
 
         test_context.panel.update(cx, move |panel, _cx| {
             panel.undo_manager = UndoManager::new_with_limit(panel.workspace.clone(), 3);
-            panel.undo_manager.record(vec![operation_a]);
-            panel.undo_manager.record(vec![operation_b]);
-            panel.undo_manager.record(vec![operation_c]);
-            panel.undo_manager.record(vec![operation_d]);
+            panel.undo_manager.record(operation_a);
+            panel.undo_manager.record(operation_b);
+            panel.undo_manager.record(operation_c);
+            panel.undo_manager.record(operation_d);
 
             assert_eq!(panel.undo_manager.stack.len(), 3);
         });

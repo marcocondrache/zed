@@ -1949,7 +1949,7 @@ impl ProjectPanel {
                             project_path: new_project_path,
                         }
                     };
-                    project_panel.undo_manager.record(Some(operation));
+                    project_panel.undo_manager.record(operation);
                 }
 
                 cx.notify();
@@ -3190,7 +3190,7 @@ impl ProjectPanel {
 
                 project_panel
                     .update(cx, |this, _| {
-                        this.undo_manager.record(operations);
+                        this.undo_manager.record_batch(operations);
                     })
                     .ok();
 
@@ -4447,7 +4447,7 @@ impl ProjectPanel {
                                     entry_id,
                                 });
 
-                                project_panel.undo_manager.record(operations);
+                                project_panel.undo_manager.record_batch(operations);
 
                                 // if only one entry was dragged and it was disambiguated, open the rename editor
                                 if item_count == 1 && disambiguation_range.is_some() {
@@ -4549,7 +4549,7 @@ impl ProjectPanel {
                     }
                     project_panel
                         .update(cx, |this, _| {
-                            this.undo_manager.record(operations);
+                            this.undo_manager.record_batch(operations);
                         })
                         .ok();
                 })
@@ -4582,7 +4582,7 @@ impl ProjectPanel {
 
                     project_panel
                         .update(cx, |this, _| {
-                            this.undo_manager.record(operations);
+                            this.undo_manager.record_batch(operations);
                         })
                         .ok();
 
