@@ -30,7 +30,7 @@ impl ProjectPanelOperation {
 
 pub struct UndoManager {
     project: Entity<Project>,
-    stack: Box<circular_buffer::CircularBuffer<MAX_UNDO_OPERATIONS, ProjectPanelOperation>>,
+    stack: Box<CircularBuffer<MAX_UNDO_OPERATIONS, ProjectPanelOperation>>,
 }
 
 impl UndoManager {
@@ -66,7 +66,7 @@ impl UndoManager {
                 };
                 let Some(task) = self
                     .project
-                    .update(cx, |project, cx| project.delete_entry(entry_id, false, cx))
+                    .update(cx, |project, cx| project.delete_entry(entry_id, true, cx))
                 else {
                     return Task::ready(Err(anyhow!("failed to trash entry")));
                 };
