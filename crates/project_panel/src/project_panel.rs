@@ -14,6 +14,7 @@ use editor::{
         entry_diagnostic_aware_icon_name_and_color, entry_git_aware_label_color,
     },
 };
+use feature_flags::{FeatureFlagAppExt, ProjectPanelUndoRedoFeatureFlag};
 use file_icons::FileIcons;
 use git;
 use git::status::GitSummary;
@@ -1193,7 +1194,7 @@ impl ProjectPanel {
             };
 
             let entity = cx.entity();
-            let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
+            let context_menu = ContextMenu::build(window, cx, |menu, _, cx| {
                 menu.context(self.focus_handle.clone()).map(|menu| {
                     if is_read_only {
                         menu.when(is_dir, |menu| {
@@ -1243,11 +1244,13 @@ impl ProjectPanel {
                                 "Paste",
                                 Box::new(Paste),
                             )
-                            .action_disabled_when(
-                                !self.undo_manager.can_undo(),
-                                "Undo",
-                                Box::new(Undo),
-                            )
+                            .when(cx.has_flag::<ProjectPanelUndoRedoFeatureFlag>(), |menu| {
+                                menu.action_disabled_when(
+                                    !self.undo_manager.can_undo(),
+                                    "Undo",
+                                    Box::new(Undo),
+                                )
+                            })
                             .when(is_remote, |menu| {
                                 menu.separator()
                                     .action("Download...", Box::new(DownloadFromRemote))
@@ -6603,7 +6606,9 @@ impl Render for ProjectPanel {
                 .on_action(cx.listener(Self::fold_directory))
                 .on_action(cx.listener(Self::remove_from_project))
                 .on_action(cx.listener(Self::compare_marked_files))
-                .on_action(cx.listener(Self::undo))
+                .when(cx.has_flag::<ProjectPanelUndoRedoFeatureFlag>(), |el| {
+                    el.on_action(cx.listener(Self::undo))
+                })
                 .when(!project.is_read_only(cx), |el| {
                     el.on_action(cx.listener(Self::new_file))
                         .on_action(cx.listener(Self::new_directory))

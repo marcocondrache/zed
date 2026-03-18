@@ -13212,6 +13212,7 @@ dependencies = [
  "criterion",
  "db",
  "editor",
+ "feature_flags",
  "file_icons",
  "git",
  "git_ui",
