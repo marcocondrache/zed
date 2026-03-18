@@ -42,6 +42,10 @@ impl UndoManager {
         }
     }
 
+    pub fn can_undo(&self) -> bool {
+        !self.stack.is_empty()
+    }
+
     pub fn undo(&mut self, cx: &mut App) {
         if let Some(operation) = self.stack.pop_back() {
             let task = self.revert_operation(operation, cx);

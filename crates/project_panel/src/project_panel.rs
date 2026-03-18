@@ -1243,6 +1243,11 @@ impl ProjectPanel {
                                 "Paste",
                                 Box::new(Paste),
                             )
+                            .action_disabled_when(
+                                !self.undo_manager.can_undo(),
+                                "Undo",
+                                Box::new(Undo),
+                            )
                             .when(is_remote, |menu| {
                                 menu.separator()
                                     .action("Download...", Box::new(DownloadFromRemote))
