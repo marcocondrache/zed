@@ -13213,7 +13213,6 @@ dependencies = [
  "db",
  "editor",
  "file_icons",
- "futures 0.3.31",
  "git",
  "git_ui",
  "gpui",

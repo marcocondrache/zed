@@ -188,8 +188,6 @@ impl UndoManager {
                     NotificationId::Named(SharedString::new_static("project_panel_undo"));
 
                 workspace.show_notification(notification_id, cx, move |cx| {
-                    let messages = messages.clone();
-
                     cx.new(|cx| {
                         if let [err] = messages.as_slice() {
                             MessageNotification::new(err.to_string(), cx)

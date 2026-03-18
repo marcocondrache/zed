@@ -2460,7 +2460,7 @@ async fn test_undo_batch(cx: &mut gpui::TestAppContext) {
     cx.run_until_parked();
 
     // Since there currently isn't a way to both create a folder and the file
-    // within it as two seperate operations batched under the same
+    // within it as two separate operations batched under the same
     // `ProjectPanelOperation::Batch` operation, we'll simply record those
     // ourselves, knowing that the filesystem already has the folder and file
     // being provided in the operations.
